@@ -26,7 +26,8 @@ public:
 	void createDebugTools();
 	cv::Mat findTarget(cv::Mat &src);
 	cv::Point getShot(cv::Mat &src, cv::Mat &ref);
-	
+	void correctShots(cv::Mat &src);
+
 	void getShots(cv::Mat &src, vector<Point> &shots);
 
 	static void targetCallBack(int event, int x, int y, int flags, void* ptr);
