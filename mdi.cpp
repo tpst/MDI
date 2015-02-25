@@ -6,18 +6,22 @@
 using namespace cv;
 using namespace std;
 
+Mat removeBlobs(cv::Mat& im, char* val, double size);
+
 indicator::indicator()
 {
 	debug = true;
-	draw = false;
 	h_min = 0;
 	h_max = 255;
 	s_min = 0;
 	s_max = 255;
 	v_min = 0;
 	v_max = 255;
+	canny_low = 380;
+	canny_high = 822;
+	canny_low_max = 1000;
+	canny_high_max = 1000;
 
-	if(debug) createDebugTools();
 
 }
 
@@ -26,55 +30,99 @@ void indicator::createDebugTools()
 	namedWindow  ("Trackbars", CV_WINDOW_NORMAL);
 	resizeWindow("Trackbars", 420, 200);
 
-	createTrackbar( "h_min", "Trackbars", &h_min, h_max );
-	createTrackbar( "h_max", "Trackbars", &h_max, h_max );
-	createTrackbar( "s_min", "Trackbars", &s_min, s_max );
-	createTrackbar( "s_max", "Trackbars", &s_max, s_max );
-	createTrackbar( "v_min", "Trackbars", &v_min, v_max );
-	createTrackbar( "v_max", "Trackbars", &v_max, v_max );
+	createTrackbar( "canny_low", "Trackbars", &canny_low, canny_low_max );
+	createTrackbar( "canny_high", "Trackbars", &canny_high, canny_high_max );
+	//createTrackbar( "h_min", "Trackbars", &h_min, h_max );
+	//createTrackbar( "h_max", "Trackbars", &h_max, h_max );
+	//createTrackbar( "s_min", "Trackbars", &s_min, s_max );
+	//createTrackbar( "s_max", "Trackbars", &s_max, s_max );
+	//createTrackbar( "v_min", "Trackbars", &v_min, v_max );
+	//createTrackbar( "v_max", "Trackbars", &v_max, v_max );
 
 }
 
-// Callback function for finding ROI of target
-void indicator::targetCallBack(int event, int x, int y, int flags, void* ptr)
+// This doesnt actually add shots to 'shots' yet. fix tomororw
+void indicator::getShots(cv::Mat &src, vector<Point> &shots)
 {
-	Rect *r = static_cast <Rect*>(ptr);
+	shots.clear();
+	vector<vector<Point>> contours;
+	Mat temp, dst, bi;
+	cvtColor(src, temp, COLOR_BGR2GRAY);
 
-	if ( event == EVENT_LBUTTONDOWN )
-	{
-		r->tl() = Point(x,y);
-		draw = true; 
-	}
-	if ( event == EVENT_MOUSEMOVE )
-	{
-		// not sure
-	}
-	if ( event == EVENT_LBUTTONUP )
-	{
-		r->br() = Point(x,y);
-		draw = false;
-	}
-}
+	if(debug) createDebugTools();
 
-Mat indicator::findTarget(cv::Mat &src)
-{
-	Rect roi;
-	namedWindow("Target", CV_WINDOW_NORMAL);
-	setMouseCallback("Target", targetCallBack, &roi);
-
-	while(1)
-	{
-		if(draw)
+	bilateralFilter(temp, bi, 7, 80, 80); 
+	if(debug) {	
+		while(1)
 		{
-			cout << "Drawing~!!!" << endl;
+			// Thresholding
+			Canny(bi, dst, canny_low, canny_high,  5);
+			imshow("canny", dst);
+			if(waitKey(1) ==32) break; // Exit loop if space is pressed
 		}
-		imshow("Target", src);
-
+	} else {
+		Canny(bi, dst, canny_low, canny_high,  5);
 	}
-	Mat dst = src.clone();
-	return dst;
+
+	if(debug) imshow("Segmented", dst);
+	
+	Mat element = getStructuringElement(MORPH_RECT, Size(3,3), Point(-1,-1));
+	dilate(dst, dst, element, Point(-1,-1), 3, 1);
+	erode(dst, dst, element, Point(-1,-1), 3, 1);
+	if(debug) imshow("morph", dst);
+	removeBlobs(dst, "large", 500);
+	if(debug) imshow("shot_img", dst);
+	waitKey();
+	findContours(dst, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+	/// Get the moments
+	vector<Moments> mu(contours.size() );
+    for( int i = 0; i < contours.size(); i++ )
+    { 
+		 mu[i] = moments( contours[i], false ); 
+	}
+
+    ///  Get the mass centers:
+    vector<Point> mc( contours.size() );
+    for( int i = 0; i < contours.size(); i++ )
+    {
+		mc[i] = Point( mu[i].m10/mu[i].m00 , mu[i].m01/mu[i].m00 ); 
+	}
+	 for( int i = 0; i< contours.size(); i++ )
+     {
+       circle( src, mc[i], 4, Scalar(0,0,255), -1, 8, 0 );
+     }
+	 destroyAllWindows();
 }
 
+//Remove blobs either above or blow value size
+Mat removeBlobs(cv::Mat& im, char* val, double size)
+{
+	std::vector<std::vector<cv::Point> > contours;
+	cv:findContours(im.clone(), contours, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
+	Mat temp = Mat::zeros( im.size(), CV_8UC1 );
+	for (size_t i = 0; i < contours.size(); ++i)
+	{
+		//calculate contour area
+		double area = cv::contourArea(contours[i]);
+
+		if (strcmp(val, "small") == 0)
+		{
+			// Remove small objects by drawing the contour with black color
+			if (area > 0 && area <= size)
+			{
+				cv::drawContours(im, contours, i, Scalar(0,0,0), -1);
+				cv::drawContours(temp, contours, i, Scalar(255,255,255), -1);
+			}	
+
+		} 	else {
+			if (area > 0 && area >= size)
+			{
+				cv::drawContours(im, contours, i, Scalar(0,0,0), -1);
+			}
+		}
+	}
+	return temp;
+}
 
 /* Find next shot function - called each frame and will compare to the reference image
    to find the impact point. The x,y location of the shot w.r.t the target centre is returned 
