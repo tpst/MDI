@@ -86,8 +86,6 @@ void indicator::correctShots(cv::Mat &src)
 
 }
 
-
-
 // Attempts to find bulletholes in the target and stores each shot in the vector 'shots'
 void indicator::getShots(cv::Mat &src, vector<Point> &shots)
 {
@@ -153,14 +151,52 @@ void indicator::getShots(cv::Mat &src, vector<Point> &shots)
 // important grouping information variables in the indicator class.
 void indicator::process(cv::Mat& src)
 {
+	Point target_centre = findTargetCentre(src);
 
+	// find mean of all shots
+
+	double mean_x, mean_y;
+	double total_x, total_y;
+	for (int i = 0; i<shots.size(); i++)
+	{
+		total_x += shots[i].x;
+		total_y += shots[i].y;
+	}
+	mean_x = total_x/shots.size();
+	mean_y = total_y/shots.size();
+	mpi = Point(mean_x, mean_y);
+	circle(src, mpi, 5, Scalar(255,0,0), 2, 8);
+	
+	// find standard deviation
+
+	double variance_x, variance_y;
+	for( int i = 0; i < shots.size(); i++)
+	{
+		variance_x += (shots[i].x - mean_x)*(shots[i].x - mean_x);
+		variance_y += (shots[i].y - mean_y)*(shots[i].y - mean_y);
+	}
+	standard_dev_x = sqrt(variance_x/shots.size());
+	standard_dev_y = sqrt(variance_y/shots.size());
+
+	cout << "Std_x: " << standard_dev_x << endl;
+	cout << "std_y: " << standard_dev_y << endl;
+	imshow("mpi", src);
+	waitKey();
+}
+
+// Finds the centre of the black cross (+) on the target. Note: this system is dependant on 
+// the target being the same for all cases. 
+// 
+Point indicator::findTargetCentre(cv::Mat& src)
+{
+	Point target_centre;
+	
 	shots_on_target = shots.size();
 	accuracy = shots_on_target/total_shots;
 
 	// find centre of target (+)
 	Mat temp = src.clone();
 	Mat dst_hsv, dst;
-	Point target_centre;
 	cvtColor(temp, dst_hsv, CV_BGR2HSV);
 	
 	if(debug) 
@@ -189,48 +225,12 @@ void indicator::process(cv::Mat& src)
 	Dilation(dst, 5, 0, 3);
 	dst = findLargestContour(dst, target_centre);
 	if(debug) imshow("DST", dst), waitKey();
-
-	// find mean of all shots
-
-	double mean_x, mean_y;
-	double total_x, total_y;
-	for (int i = 0; i<shots.size(); i++)
-	{
-		total_x += shots[i].x;
-		total_y += shots[i].y;
-	}
-	mean_x = total_x/shots.size();
-	mean_y = total_y/shots.size();
-	mpi = Point(mean_x, mean_y);
-	circle(src, mpi, 5, Scalar(255,0,0), 2, 8);
-	
-	imshow("mpi", src);
-	waitKey();
-	
-	double variance_x, variance_y;
-	// find standard deviation
-	for( int i = 0; i < shots.size(); i++)
-	{
-		variance_x += (shots[i].x - mean_x)*(shots[i].x - mean_x);
-		variance_y += (shots[i].y - mean_y)*(shots[i].y - mean_y);
-	}
-	standard_dev_x = sqrt(variance_x/shots.size());
-	standard_dev_y = sqrt(variance_y/shots.size());
-
-	cout << "Std_x: " << standard_dev_x << endl;
-	cout << "std_y: " << standard_dev_y << endl;
-	imshow("mpi", src);
-	waitKey();
-}
-
-Point findTargetCentre(cv::Mat& src)
-{
-
+	return target_centre;
 }
 
 
 
-
+// Finds largest contour. used to find the black cross on target.
 Mat findLargestContour(cv::Mat& im, Point target_centre)
 {
 	int largest_area=0;
@@ -252,12 +252,17 @@ Mat findLargestContour(cv::Mat& im, Point target_centre)
 	drawContours(temp, contours, largest_contour_index, Scalar(255,255,255), -1, 8);
 
 	/* FIND THE CENTRE OF TARGET */
-	/// Get the moments
-	Moments mu = moments( contours[largest_contour_index], false);
+	
+	if(contours.size() < 1)
+	{
+		target_centre = Point(im.rows/2, im.cols/2);
+	} else {
+		/// Get the moments
+		Moments mu = moments( contours[largest_contour_index], false);
 
-    ///  Get the mass centers:
-    target_centre = Point( mu.m10/mu.m00 , mu.m01/mu.m00 ); 
-
+		///  Get the mass centers:
+		target_centre = Point( mu.m10/mu.m00 , mu.m01/mu.m00 ); 
+	}
 	return temp;
 }
 

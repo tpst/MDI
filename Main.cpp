@@ -1,7 +1,9 @@
 #include "mdi.h"
 
 // This is the entry point to the program
-int main (int argc, char* argv[])
+// Note: to remove console for release go to properties->linker->system and change
+// subsystem to "windows". Then rename main to 'WinMain'
+int main(int argc, char* argv[])
 {
 	Mat img = imread("MDItarget.jpg");
 

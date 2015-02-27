@@ -15,10 +15,7 @@ void Erosion(cv::Mat& im, int iterations, int elem, int size);
 
 class indicator {
 
-public:
-	cv::vector<cv::Point> shots;
-
-	bool debug;
+private:
 
 	int h_min, h_max,
 		s_min, s_max,
@@ -26,6 +23,11 @@ public:
 		canny_low, canny_high,
 		canny_low_max, canny_high_max;
 
+public:
+	cv::vector<cv::Point> shots;
+
+	bool debug;
+	
 	/* Grouping information */
 	Point mpi;
 	double dist_to_mpi, accuracy;
@@ -38,7 +40,7 @@ public:
 
 	void createDebugTools();
 
-	cv::Mat findTarget(cv::Mat &src);
+	Point findTargetCentre(cv::Mat &src);
 	void correctShots(cv::Mat &src);
 	void getShots(cv::Mat &src, vector<Point> &shots); 
 	void process(cv::Mat &src);
