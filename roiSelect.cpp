@@ -53,7 +53,7 @@ Mat getRoi(cv::Mat &src)
 			imshow("Target", src);
 			if(roi.area() > 500) imshow("ROI", src(roi));
 		}
-		if(waitKey(15) ==32) break; // Exit loop if space is pressed
+		if(waitKey(15) == 32 && select_flag) break; // Exit loop if space is pressed
 	}
 	destroyAllWindows();
 	return src(roi);
