@@ -33,8 +33,8 @@ Mat getRoi(cv::Mat &src)
 	Rect roi;
 	vector<Point> pts;
 	Mat temp;
-	namedWindow("Target", CV_WINDOW_NORMAL);
-	setMouseCallback("Target", roiCallBack, &pts);
+	namedWindow("Select Target for Processing", CV_WINDOW_NORMAL);
+	setMouseCallback("Select Target for Processing", roiCallBack, &pts);
 
 	while(1)
 	{
@@ -47,11 +47,15 @@ Mat getRoi(cv::Mat &src)
 			roi = Rect(pts[0], pts[1]);
 			
 		}
-		imshow("Target", temp);
+		imshow("Select Target for Processing", temp);
 		if(select_flag)
 		{
-			imshow("Target", src);
-			if(roi.area() > 500) imshow("ROI", src(roi));
+			imshow("Select Target for Processing", src);
+			if(roi.area() > 500) 
+				{
+					namedWindow("Target", CV_WINDOW_NORMAL);
+					imshow("Target", src(roi));
+			}
 		}
 		if(waitKey(15) == 32 && select_flag) break; // Exit loop if space is pressed
 	}

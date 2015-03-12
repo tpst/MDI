@@ -1,5 +1,8 @@
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
+#include <Windows.h>
+#include <stdlib.h>
+#include <ShObjIdl.h>
 
 using namespace cv;
 using namespace std;
@@ -7,11 +10,12 @@ using namespace std;
 
 Mat getRoi(cv::Mat &src);
 void roiCallBack(int event, int x, int y, int flags, void* ptr);
-Mat findLargestContour(cv::Mat& im, Point target_centre);
+Mat findLargestContour(cv::Mat& im, Point &target_centre);
 
 void Dilation(cv::Mat& im, int iterations, int elem, int size);
 void Erosion(cv::Mat& im, int iterations, int elem, int size);
 
+Mat load_image();
 
 class indicator {
 

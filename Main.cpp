@@ -5,7 +5,8 @@
 // subsystem to "windows". Then rename main to 'WinMain'
 int main(int argc, char* argv[])
 {
-	Mat img = imread("MDItarget.jpg");
+	// Display instructions & load image
+    Mat img = load_image();
 
 	indicator mdi; // create mdi class
 

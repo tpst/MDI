@@ -2,7 +2,7 @@
 #include <opencv/highgui.h>
 
 #include "mdi.h"
-
+#
 using namespace cv;
 using namespace std;
 
@@ -26,6 +26,43 @@ indicator::indicator()
 	/* salvo info */
 	total_shots = 45;
 
+}
+
+Mat load_image()
+{
+
+	MessageBoxW(NULL, L"1. Load the image you want to analyze and use the mouse to select the target. Use space to continue. \n\n2. Use left and right click to add and remove any incorrect shots.\n\n3. Results will be displayed on screen and in the console.", L"Instructions", MB_OK | MB_ICONEXCLAMATION);
+
+	OPENFILENAME ofn;       // common dialog box structure
+	TCHAR szFile[260];       // buffer for file name
+	HWND hwnd;              // owner window
+
+	// Initialize OPENFILENAME
+	ZeroMemory(&ofn, sizeof(ofn));
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrFile = szFile;
+	// Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
+	// use the contents of szFile to initialize itself.
+	ofn.lpstrFile[0] = '\0';
+	ofn.lpstrTitle = L"Open Image File";
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = L"All Files\0*.*\0Image Files\0*.jpg;*.gif;*.jpeg;*.tif;*.png\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	Mat src;
+	// Display the Open dialog box. 
+	if (GetOpenFileName(&ofn)==TRUE) 
+	{
+		// Succeeded in choosing a file
+		char filepath[260];
+		wcstombs(filepath, ofn.lpstrFile, 260);
+		cout << filepath << endl;
+		src = imread(filepath);
+	} 
+
+	return src;
 }
 
 void indicator::createDebugTools()
@@ -71,6 +108,8 @@ void correctionCallback(int event, int x, int y, int flags, void* ptr)
 void indicator::correctShots(cv::Mat &src)
 {
 	namedWindow("Correct Shots", CV_WINDOW_NORMAL);
+	namedWindow("Unaltered Target", CV_WINDOW_NORMAL);
+	imshow("Unaltered Target", src);
 	setMouseCallback("Correct Shots", correctionCallback, &shots);
 
 	while(1)
@@ -120,7 +159,7 @@ void indicator::getShots(cv::Mat &src, vector<Point> &shots)
 	if(debug) imshow("morph", dst);
 	Mat temp1 = removeBlobs(dst, "small", 500);
 
-	if(debug) imshow("shot_img", dst),	imshow("Result of blob extraction", temp1);
+	if(debug) imshow("shot_img", dst);
 	waitKey();
 	findContours(temp1, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
 	/// Get the moments
@@ -141,9 +180,7 @@ void indicator::getShots(cv::Mat &src, vector<Point> &shots)
      {
        circle( clone, shots[i], 4, Scalar(0,0,255), -1, 8, 0 );
      }
-	 namedWindow("SHOTS", CV_WINDOW_NORMAL);
-	 imshow("SHOTS", clone);
-	 waitKey();
+
 	 destroyAllWindows();
 }
 
@@ -151,8 +188,12 @@ void indicator::getShots(cv::Mat &src, vector<Point> &shots)
 // important grouping information variables in the indicator class.
 void indicator::process(cv::Mat& src)
 {
-	Point target_centre = findTargetCentre(src);
 
+	shots_on_target = shots.size();
+	accuracy = shots_on_target/total_shots;
+
+	Point target_centre = findTargetCentre(src);
+	cout << target_centre << endl;
 	// find mean of all shots
 
 	double mean_x, mean_y;
@@ -164,23 +205,30 @@ void indicator::process(cv::Mat& src)
 	}
 	mean_x = total_x/shots.size();
 	mean_y = total_y/shots.size();
+	// mean point of impact (Mpi)
 	mpi = Point(mean_x, mean_y);
-	circle(src, mpi, 5, Scalar(255,0,0), 2, 8);
-	
-	// find standard deviation
+
+	line(src, Point(target_centre.x - 100, target_centre.y), Point(target_centre.x + 100, target_centre.y), Scalar(0,255,0), 2, 8);
+	line(src, Point(target_centre.x, target_centre.y-100), Point(target_centre.x, target_centre.y + 100), Scalar(0,255,0), 2, 8);
+	circle(src, target_centre, 2, Scalar(255,255,255),2, 8);
+	circle(src, mpi, 5, Scalar(0,0,255), -1, 8);
+	circle(src, mpi, 20, Scalar(0,0,255), 2, 8);
+
+
+	// find standard deviation from centre of target
 
 	double variance_x, variance_y;
 	for( int i = 0; i < shots.size(); i++)
 	{
-		variance_x += (shots[i].x - mean_x)*(shots[i].x - mean_x);
-		variance_y += (shots[i].y - mean_y)*(shots[i].y - mean_y);
+		variance_x += (shots[i].x - target_centre.x)*(shots[i].x - target_centre.x);
+		variance_y += (shots[i].y - target_centre.y)*(shots[i].y - target_centre.y);
 	}
 	standard_dev_x = sqrt(variance_x/shots.size());
 	standard_dev_y = sqrt(variance_y/shots.size());
 
 	cout << "Std_x: " << standard_dev_x << endl;
 	cout << "std_y: " << standard_dev_y << endl;
-	imshow("mpi", src);
+	imshow("Mean Point of Impact (red)", src);
 	waitKey();
 }
 
@@ -191,9 +239,6 @@ Point indicator::findTargetCentre(cv::Mat& src)
 {
 	Point target_centre;
 	
-	shots_on_target = shots.size();
-	accuracy = shots_on_target/total_shots;
-
 	// find centre of target (+)
 	Mat temp = src.clone();
 	Mat dst_hsv, dst;
@@ -231,7 +276,7 @@ Point indicator::findTargetCentre(cv::Mat& src)
 
 
 // Finds largest contour. used to find the black cross on target.
-Mat findLargestContour(cv::Mat& im, Point target_centre)
+Mat findLargestContour(cv::Mat& im, Point &target_centre)
 {
 	int largest_area=0;
 	int largest_contour_index=0;
@@ -253,16 +298,17 @@ Mat findLargestContour(cv::Mat& im, Point target_centre)
 
 	/* FIND THE CENTRE OF TARGET */
 	
-	if(contours.size() < 1)
-	{
-		target_centre = Point(im.rows/2, im.cols/2);
-	} else {
-		/// Get the moments
-		Moments mu = moments( contours[largest_contour_index], false);
+	Point temp_point = Point(im.rows/2, im.cols/2);
+	Moments mu = moments( contours[largest_contour_index], false);
+	target_centre = Point( mu.m10/mu.m00 , mu.m01/mu.m00 ); 
 
-		///  Get the mass centers:
-		target_centre = Point( mu.m10/mu.m00 , mu.m01/mu.m00 ); 
+	// This if statement checks if our found target is approximately in the middle of the image +- 20%. 
+	if(target_centre.x < 0.8*temp_point.x || target_centre.x > 1.2*temp_point.x 
+		|| target_centre.y < 0.8*temp_point.y || target_centre.y > 1.2*temp_point.y)
+	{
+		target_centre = temp_point;
 	}
+
 	return temp;
 }
 
