@@ -46,7 +46,7 @@ Mat load_image()
 	ofn.lpstrFile[0] = '\0';
 	ofn.lpstrTitle = L"Open Image File";
 	ofn.nMaxFile = sizeof(szFile);
-	ofn.lpstrFilter = L"All Files\0*.*\0Image Files\0*.jpg;*.gif;*.jpeg;*.tif;*.png\0";
+	ofn.lpstrFilter = L"Image Files\0*.jpg;*.gif;*.jpeg;*.tif;*.png\0";
 	ofn.nFilterIndex = 1;
 	ofn.lpstrInitialDir = NULL;
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
@@ -197,7 +197,6 @@ void indicator::process(cv::Mat& src)
 
 	// find mean of all shots
 
-	double mean_x, mean_y;
 	double total_x, total_y;
 	for (int i = 0; i<shots.size(); i++)
 	{
@@ -214,8 +213,18 @@ void indicator::process(cv::Mat& src)
 	circle(src, target_centre, 2, Scalar(255,255,255),2, 8);
 	circle(src, mpi, 5, Scalar(0,0,255), -1, 8);
 	circle(src, mpi, 20, Scalar(0,0,255), 2, 8);
-	if(target_rect.area() > 1) rectangle(src, target_rect.tl(), target_rect.br(),Scalar(0,0,255), 2, 8);
-
+	if(target_rect.area() > 1) 
+	{
+		// Rect is ~2.4 m, find ratio of pixel to m
+		rectangle(src, target_rect.tl(), target_rect.br(),Scalar(0,255,0), 2, 8);
+		ratio_x = target_rect.width/2.4; 
+		ratio_y = target_rect.height/2.4;
+	} else {
+		// Assume entire image is 2.4m
+		ratio_x = src.cols/2.4;
+		ratio_y = src.rows/2.4;
+	}
+		
 	// find standard deviation from centre of target
 
 	double variance_x, variance_y;
@@ -224,11 +233,23 @@ void indicator::process(cv::Mat& src)
 		variance_x += (shots[i].x - target_centre.x)*(shots[i].x - target_centre.x);
 		variance_y += (shots[i].y - target_centre.y)*(shots[i].y - target_centre.y);
 	}
-	standard_dev_x = sqrt(variance_x/shots.size());
-	standard_dev_y = sqrt(variance_y/shots.size());
+	standard_dev_x = sqrt(variance_x/shots.size())/ratio_x; // In metres
+	standard_dev_y = sqrt(variance_y/shots.size())/ratio_y;
+	
+	// Convert mean to metres w.r.t centre of target
+	mean_x = (mean_x-target_centre.x)/ratio_x;
+	mean_y = -(mean_y-target_centre.y)/ratio_y;
 
-	cout << "Std_x: " << standard_dev_x << endl;
-	cout << "std_y: " << standard_dev_y << endl;
+	miss_distance_mean = sqrt((mean_x*mean_x)+(mean_y*mean_y));
+	miss_distance_std = sqrt((standard_dev_x*standard_dev_x) + (standard_dev_y*standard_dev_y));
+	cout << "Shots : " << shots.size() << endl;
+	cout << "MD - mean : " << miss_distance_mean << endl;
+	cout << "MD - std dev : " << miss_distance_std << endl;
+	cout << "Mean_x : " << mean_x << endl;
+	cout << "Mean_y : " << mean_y << endl;
+	cout << "Std_x : " << standard_dev_x << endl;
+	cout << "std_y : " << standard_dev_y << endl;
+
 	namedWindow("Mean Point of Impact (red)", CV_WINDOW_NORMAL);
 	imshow("Mean Point of Impact (red)", src);
 	waitKey();
@@ -309,130 +330,6 @@ Mat findLargestContour(cv::Mat& im, vector<vector<Point>> &contours, int &larges
 	return temp;
 }
 
-// Finds the centre of the black cross (+) on the target. Note: this system is dependant on 
-// the target being the same for all cases. 
-// 
-//Point indicator::findTargetCentre(cv::Mat& src)
-//{
-//	Point target_centre;
-//	
-//	// find centre of target (+)
-//	Mat temp = src.clone();
-//	Mat dst_hsv, dst;
-//	cvtColor(temp, dst_hsv, CV_BGR2HSV);
-//	
-//	if(debug) 
-//	{
-//		namedWindow  ("Trackbars", CV_WINDOW_NORMAL);
-//		resizeWindow("Trackbars", 420, 200);
-//
-//		createTrackbar( "h_min", "Trackbars", &h_min, h_max );
-//		createTrackbar( "h_max", "Trackbars", &h_max, h_max );
-//		createTrackbar( "s_min", "Trackbars", &s_min, s_max );
-//		createTrackbar( "s_max", "Trackbars", &s_max, s_max );
-//		createTrackbar( "v_min", "Trackbars", &v_min, v_max );
-//		createTrackbar( "v_max", "Trackbars", &v_max, v_max );
-//
-//		while(1) 
-//		{
-//			inRange(dst_hsv, Scalar(h_min, s_min, v_min), Scalar(h_max, s_max, v_max), dst);
-//			imshow("thresholding", dst);
-//			if(waitKey(1) == 32) break; // exit loop of space is pressed. 
-//		}
-//	} else {
-//		inRange(dst_hsv, Scalar(h_min, s_min, v_min), Scalar(h_max, s_max, v_max), dst);
-//	}
-//
-//	Erosion(dst, 3, 0, 3);
-//	Dilation(dst, 5, 0, 3);
-//	dst = findLargestContour(dst, target_centre, target_rect);
-//	if(debug) namedWindow("DST", CV_WINDOW_NORMAL), imshow("DST", dst), waitKey();
-//	return target_centre;
-//}
-//
-//
-//
-//// Finds largest contour. used to find the black cross on target.
-//Mat findLargestContour(cv::Mat& im, Point &target_centre, Rect& target_rect)
-//{
-//	int largest_area=0;
-//	int largest_contour_index=0;
-//	vector<vector<Point>> contours; // Vector for storing contour
-//    vector<Vec4i> hierarchy;
-//	Mat temp = Mat::zeros( im.size(), CV_8UC3 );
-//
-//    findContours( im.clone(), contours, hierarchy,CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE ); // Find the contours in the image
-//	if( contours.size() > 0 ) 
-//	{
-//		for( int i = 0; i< contours.size(); i++ ) // iterate through each contour.
-//		{
-//		   double a=contourArea( contours[i],false);  //  Find the area of contour
-//		   if(a>largest_area){
-//		   largest_area=a;
-//		   largest_contour_index=i;                //Store the index of largest contour
-//		   }
-//		}
-//		drawContours(temp, contours, largest_contour_index, Scalar(255,255,255), -1, 8);
-//		target_rect = boundingRect(Mat(contours[largest_contour_index]));
-//
-//		Moments mu = moments( contours[largest_contour_index], false);
-//		target_centre = Point( mu.m10/mu.m00 , mu.m01/mu.m00 ); 
-//
-//		/* find centre of target */
-//		//Construct a buffer used by the pca analysis
-//		Mat data_pts = Mat( contours[largest_contour_index].size(), 2, CV_64FC1);
-//		for (int i = 0; i < data_pts.rows; ++i)
-//		{
-//			data_pts.at<double>(i, 0) =  contours[largest_contour_index][i].x;
-//			data_pts.at<double>(i, 1) =  contours[largest_contour_index][i].y;
-//		}
-// 
-//		//Perform PCA analysis
-//		PCA pca_analysis(data_pts, Mat(), CV_PCA_DATA_AS_ROW);
-// 
-//		//Store the position of the object
-//		Point pos = Point(pca_analysis.mean.at<double>(0, 0),
-//						  pca_analysis.mean.at<double>(0, 1));
-// 
-//		//Store the eigenvalues and eigenvectors
-//		vector<Point2d> eigen_vecs(2);
-//		vector<double> eigen_val(2);
-//		for (int i = 0; i < 2; ++i)
-//		{
-//			eigen_vecs[i] = Point2d(pca_analysis.eigenvectors.at<double>(i, 0),
-//									pca_analysis.eigenvectors.at<double>(i, 1));
-// 
-//			eigen_val[i] = pca_analysis.eigenvalues.at<double>(0, i);
-//		}
-// 
-//		// Draw the principal components
-//		circle(im, pos, 3, CV_RGB(255, 0, 255), 2);
-//		line(im, pos, pos + 0.02 * Point(eigen_vecs[0].x * eigen_val[0], eigen_vecs[0].y * eigen_val[0]) , CV_RGB(255, 255, 0));
-//		line(im, pos, pos + 0.02 * Point(eigen_vecs[1].x * eigen_val[1], eigen_vecs[1].y * eigen_val[1]) , CV_RGB(0, 255, 255));
-//		rectangle(im, target_rect.tl(), target_rect.br(), Scalar(0,0,255), 2, 8);
-//		imshow("im", im);
-//		waitKey();
-//
-//	} else {
-//		target_rect = Rect (0,0,temp.rows,temp.cols); // If there is no black cross, the boundary of the target is then just the image dimensions. 
-//	}
-//
-//	/* FIND THE CENTRE OF TARGET */
-//
-//
-//	
-//	Point temp_point = Point(im.rows/2, im.cols/2); //Default to this. 
-//
-//
-//	// This if statement checks if our found target is approximately in the middle of the image +- 20%. 
-//	if(target_centre.x < 0.8*temp_point.x || target_centre.x > 1.2*temp_point.x 
-//		|| target_centre.y < 0.8*temp_point.y || target_centre.y > 1.2*temp_point.y)
-//	{
-//		target_centre = temp_point;
-//	}
-//
-//	return temp;
-//}
 
 //Remove blobs either above or blow value size
 Mat removeBlobs(cv::Mat& im, char* val, double size)

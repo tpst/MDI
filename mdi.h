@@ -31,13 +31,17 @@ public:
 
 	bool debug;
 	
-	/* Grouping information */
+	////* Grouping information */////
+
 	Point mpi;
-	double dist_to_mpi, accuracy;
+	double accuracy;
+	double mean_x, mean_y;
 	double standard_dev_x, standard_dev_y;
 	int shots_on_target, total_shots;
+	double miss_distance_mean, miss_distance_std; // mean and std deviation of miss distance. 
 	Rect target_rect;
 	Point target_centre;
+	double ratio_x, ratio_y; // ratio between pixels to metres.
 	
 	////////////////////////////////
 
