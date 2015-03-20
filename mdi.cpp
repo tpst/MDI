@@ -2,9 +2,14 @@
 #include <opencv/highgui.h>
 
 #include "mdi.h"
-#
+
 using namespace cv;
 using namespace std;
+
+//Globals for callback function
+bool draw1 = false;
+bool select_flag1 = false;
+vector<Point> pts;
 
 Mat removeBlobs(cv::Mat& im, char* val, double size);
 
@@ -31,11 +36,10 @@ indicator::indicator()
 Mat load_image()
 {
 
-	MessageBoxW(NULL, L"1. Load the image you want to analyze and use the mouse to select the target. Use space to continue. \n\n2. Use left and right click to add and remove any incorrect shots.\n\n3. Results will be displayed on screen and in the console.", L"Instructions", MB_OK | MB_ICONEXCLAMATION);
+	MessageBoxW(NULL, L"1. Browse to and open the target image\n\n2. Left click and drag a box around the target \n\n3. Left click to add additional points and right click to remove points \n\n3. Results will be displayed on screen and in the console.", L"Instructions", MB_OK);
 
 	OPENFILENAME ofn;       // common dialog box structure
 	TCHAR szFile[260];       // buffer for file name
-	HWND hwnd;              // owner window
 
 	// Initialize OPENFILENAME
 	ZeroMemory(&ofn, sizeof(ofn));
@@ -52,17 +56,98 @@ Mat load_image()
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
 	Mat src;
-	// Display the Open dialog box. 
-	if (GetOpenFileName(&ofn)==TRUE) 
-	{
-		// Succeeded in choosing a file
-		char filepath[260];
-		wcstombs(filepath, ofn.lpstrFile, 260);
-		cout << filepath << endl;
-		src = imread(filepath);
-	} 
+
+	while(1) {
+		// Display the Open dialog box. 
+		if (GetOpenFileName(&ofn)==TRUE) 
+		{
+			// Succeeded in choosing a file
+			char filepath[260];
+			wcstombs(filepath, ofn.lpstrFile, 260);
+			cout << filepath << endl;
+			src = imread(filepath);
+			break;
+		} else {
+			if(MessageBoxW(NULL, L"Please select an image!", L"No image chosen", MB_OKCANCEL | MB_ICONERROR) == IDCANCEL)
+			{
+				exit(-1);
+			}
+		}
+	};
 
 	return src;
+}
+
+void indicator::save_output()
+{
+
+	OPENFILENAME ofn;       // common dialog box structure
+	TCHAR szFile[260];       // buffer for file name
+
+	// Initialize OPENFILENAME
+	ZeroMemory(&ofn, sizeof(ofn));
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrFile = szFile;
+	// Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
+	// use the contents of szFile to initialize itself.
+	ofn.lpstrFile[0] = '\0';
+	ofn.lpstrTitle = L"Save output as";
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = L"txt file (.txt)\0*.txt\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+	while(1)
+	{
+		// Display the Open dialog box. 
+		if (GetSaveFileName(&ofn)==TRUE) 
+		{
+			// Succeeded in choosing a file
+			char filepath[260];
+			wcstombs(filepath, ofn.lpstrFile, 260);
+			strcat(filepath, ".txt");
+			if(!fileExists(filepath)) 
+			{
+				// Write to file
+				ofstream mfile;
+				mfile.open(filepath);
+
+				mfile << "# Shots On Target = " << shots.size() << endl;
+				mfile << "Mean Point Impact (mpi) = " << Point2f(mean_x, mean_y) << endl;
+				mfile << "Standard deviation x = " << standard_dev_x << endl;
+				mfile << "Standard deviation y = " << standard_dev_y << endl;
+				mfile << "MISS DISTANCES" << endl;
+				mfile << "MD Mean = " << miss_distance_mean << endl;
+				mfile << "MD Std Dev = " << miss_distance_std << endl;
+				mfile << "Shot Locations" << endl;
+				for( int i = 0; i < shots.size(); i++)
+				{
+					double temp_x, temp_y;
+					temp_x = (shots[i].x - target_centre.x)/ratio_x;
+					temp_y = -(shots[i].y - target_centre.y)/ratio_y;// Convert to meters, origin is target centre. 
+					mfile << Point2f(temp_x, temp_y) << endl;
+				}
+				break;
+			} else {
+				if(MessageBoxW(NULL, L"Please choose another name", L"That file already exists!", MB_OKCANCEL | MB_ICONERROR) == IDCANCEL)
+					exit(0);
+			}
+
+		} else {
+			break;
+		}
+	}
+}
+
+// Check if file exists
+bool fileExists(const std::string& filename)
+{
+    struct stat buf;
+    if (stat(filename.c_str(), &buf) != -1)
+    {
+        return true;
+    }
+    return false;
 }
 
 void indicator::createDebugTools()
@@ -86,12 +171,27 @@ void correctionCallback(int event, int x, int y, int flags, void* ptr)
 {
 	vector<Point> *p = static_cast<vector<Point> *>(ptr);
 	
+
 	if( event == EVENT_LBUTTONDOWN )
 	{
 		p->push_back(Point(x, y)); 
 	}
 	if( event == EVENT_RBUTTONDOWN ) // This does some wierd stuff
 	{
+		select_flag1 = false;
+		pts.clear();
+		pts.push_back(Point(x,y));
+		pts.push_back(Point(x,y));
+		draw1 = true;
+		
+	}
+	if( event == EVENT_MOUSEMOVE && draw1)
+	{
+		pts[1] = Point(x,y);
+	}
+	if( event == EVENT_RBUTTONUP )
+	{
+		Rect roi = Rect(pts[0], pts[1]);
 		for( int i = 0; i < p->size(); i++)
 		{ 
 			double distance = sqrt( ((*p)[i].x-x)*((*p)[i].x-x) + ((*p)[i].y-y)*((*p)[i].y-y));
@@ -99,7 +199,12 @@ void correctionCallback(int event, int x, int y, int flags, void* ptr)
 			{
 				p->erase(p->begin()+i); // Remove this element from the array of shtos
 			}
+			if(roi.contains((*p)[i])) p->erase(p->begin()+i);
+
 		}
+
+		draw1 = false;
+		select_flag1 = true;
 	}
 
 }
@@ -107,19 +212,25 @@ void correctionCallback(int event, int x, int y, int flags, void* ptr)
 // Allows the user to manually add and remove shots
 void indicator::correctShots(cv::Mat &src)
 {
-	namedWindow("Correct Shots", CV_WINDOW_NORMAL);
+	namedWindow("Correct Shots - Left click to add and right click to remove", CV_WINDOW_NORMAL);
 	namedWindow("Target", CV_WINDOW_NORMAL);
 	imshow("Target", src);
-	setMouseCallback("Correct Shots", correctionCallback, &shots);
-
+	setMouseCallback("Correct Shots - Left click to add and right click to remove", correctionCallback, &shots);
+	Mat temp;
 	while(1)
 	{
-		Mat temp = src.clone();
+		temp = src.clone();
 		for( int i = 0; i< shots.size(); i++ )
 		{
 			circle( temp, shots[i], 4, Scalar(0,0,255), -1, 8, 0 );
 		}
-		imshow("Correct Shots", temp);
+		if(draw1)
+		{
+			rectangle(temp, pts[0], pts[1], Scalar(255,255,255), 3, 8);
+			circle(temp, pts[0], 10, Scalar(255,255,255), -1, 8);
+			circle(temp, pts[1], 10, Scalar(255,255,255), -1, 8);
+		}
+		imshow("Correct Shots - Left click to add and right click to remove", temp);
 		if(waitKey(1) == 32) break; // exit loop of space is pressed. 
 	}
 
@@ -300,8 +411,45 @@ Point indicator::findTargetCentre(cv::Mat& src)
 		target_centre = Point(src.rows/2, src.cols/2);
 	}
 
+	line(temp, Point(target_centre.x - 100, target_centre.y), Point(target_centre.x + 100, target_centre.y), Scalar(0,255,0), 2, 8);
+	line(temp, Point(target_centre.x, target_centre.y-100), Point(target_centre.x, target_centre.y + 100), Scalar(0,255,0), 2, 8);
+	circle(temp, target_centre, 2, Scalar(255,255,255),2, 8);
+
+	namedWindow("Target Centre", CV_WINDOW_NORMAL);
+	setMouseCallback("Target Centre", ptCallBack, &target_centre);
+	imshow("Target Centre", temp);
+
+	if(MessageBox(NULL, L"Selecting 'Yes' will allow you to click a new point on the image. Press Space to continue once you have completed this step. \n\nSelect 'No' to continue.", L"Would You Like to Manually Adjust the Target Centre?",  MB_YESNO) == IDYES)
+	{
+		// allow user to change target centre.
+	
+		while(1)
+		{ 
+			temp = src.clone();
+			line(temp, Point(target_centre.x - 100, target_centre.y), Point(target_centre.x + 100, target_centre.y), Scalar(0,255,0), 2, 8);
+			line(temp, Point(target_centre.x, target_centre.y-100), Point(target_centre.x, target_centre.y + 100), Scalar(0,255,0), 2, 8);
+			circle(temp, target_centre, 2, Scalar(255,255,255),2, 8);	
+			imshow("Target Centre", temp);
+			if(waitKey(15) == 32) break;
+		}
+	} 
+	destroyAllWindows();
 	return target_centre;
 }
+
+
+// Callback function for centre pt correction
+void ptCallBack(int event, int x, int y, int flags, void* ptr)
+{
+	Point *p = static_cast< Point* >(ptr);
+	
+	if( event == EVENT_LBUTTONDOWN )
+	{
+		(*p) = Point(x,y);
+	}
+	
+}
+
 
 Mat findLargestContour(cv::Mat& im, vector<vector<Point>> &contours, int &largest_contour_index)
 {

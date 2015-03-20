@@ -3,18 +3,23 @@
 #include <Windows.h>
 #include <stdlib.h>
 #include <ShObjIdl.h>
+#include <Commdlg.h>
+#include <fstream>
+#include <sys/stat.h>
+
 
 using namespace cv;
 using namespace std;
 
-
 Mat getRoi(cv::Mat &src);
 void roiCallBack(int event, int x, int y, int flags, void* ptr);
+void ptCallBack(int event, int x, int y, int flags, void* ptr);
 Mat findLargestContour(cv::Mat& im, std::vector<std::vector<cv::Point>> &contours, int &largest_contour_index);
 void Dilation(cv::Mat& im, int iterations, int elem, int size);
 void Erosion(cv::Mat& im, int iterations, int elem, int size);
 
 Mat load_image();
+bool fileExists(const std::string& filename);
 
 class indicator {
 
@@ -56,5 +61,6 @@ public:
 
 	cv::Point getShot(cv::Mat &src, cv::Mat &ref);// for 2 image comparison. redundant
 
+	void save_output();
 
 };
